@@ -1,8 +1,8 @@
 # Quantifying irrigation adaptation strategies in response to stakeholder-driven groundwater management in the US High Plains Aquifer
 
-14 January 2019
-Code by: Jillian Deines
-Contact: jillian.deines@gmail.com
+14 January 2019  
+Code by: Jillian Deines  
+Contact: jillian.deines@gmail.com  
 
 This codebase accompanies the paper:
 

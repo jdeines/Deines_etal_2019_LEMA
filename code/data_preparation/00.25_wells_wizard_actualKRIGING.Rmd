@@ -11,10 +11,10 @@ output:
 
 Goal: Krige water levels from the KS Wizard Well database
 
-Update 5/27/2018: re-run with re-processed well dataset.
+Update 5/27/2018: re-run with re-processed wizard well dataset.
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(fig.path='../figure/03.15_actualKriging/',
+knitr::opts_chunk$set(fig.path='../../figure/00.25_actualKriging/',
                       cache = FALSE)
 ```
 
@@ -25,6 +25,9 @@ library(rgdal)
 library(gstat)
 library(latticeExtra)
 library(raster)
+
+# get filepath to repo on local system
+mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
 ```
 
 # Load Data
@@ -36,12 +39,12 @@ library(raster)
 classProj <- '+proj=aea +lat_1=20 +lat_2=60 +lat_0=40 +lon_0=-101 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0'
 
 # buffer boundary
-gisDir <- 'C:/Users/deinesji/Dropbox/1PhdJill/hpa/LEMA_Part1/data/GIS/boundaries'
+gisDir <- paste0(mainDir, '/data/GIS/boundaries')
 AOIs.ll <- readOGR(gisDir,'Combined_Null9_S6_10kmBuff_indvlPolys')
 AOIs <- spTransform(AOIs.ll, CRS(classProj))
 
 # filtered wizard wells
-wellDir <- 'C:/Users/deinesji/Dropbox/1PhdJill/hpa/LEMA_Part1/data/wellData/WIZARD/cleaned'
+wellDir <- paste0(mainDir, '/data/wellData/WIZARD/cleaned')
 wells.ll <- readOGR(wellDir, 'wells_cleaned_clipped_1996-2017_jimRemoved')
 wells <- spTransform(wells.ll, CRS(classProj))
 
@@ -83,15 +86,13 @@ build.SpinPolyGrid <- function(poly, gridres=1000, coordNames = c('x', 'y')) {
 ```
 
 # Krige!
-Methods optimized in 03.10_wells_wizardKriging.Rmd or whatever it was called
-
-Do this in a loop for all years available (2000-2017)
+Do this in a loop for all years available (1996-2017)
 
 ## variables
 
 ```{r set_vars}
 # file location and names
-outDirGis <- 'C:/Users/deinesji/Dropbox/1PhdJill/hpa/LEMA_Part1/data/GIS/waterLevels'
+outDirGis <- paste0(mainDir, '/data/GIS/waterLevels')
 fSuffixElev <- '_waterTableElev_wizardKrige_m_jimRemoved.tif'
 fSuffixChange <- '_waterTableChange_wizardKrige_m_jimRemoved'
 

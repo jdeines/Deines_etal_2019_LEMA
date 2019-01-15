@@ -16,6 +16,7 @@ Inputs:
 Output:
 - a csv for each year requested with rows per polygon and 
 columns: masterid, all CDL codes. Variable = area per polygon in square meters
+- stored in data/tabular/cdl_tables_lema
 
 
 */

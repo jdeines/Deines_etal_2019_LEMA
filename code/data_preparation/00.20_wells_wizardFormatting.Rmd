@@ -16,7 +16,7 @@ Update 5/27/2018: removing bad well flagged by Jim Butler
 Note: well data is not included in this repo to leave personal data access to the management of the KGS and WIZARD database. The data used here (site and wlevel data) was downloaded for GMD4 on April 11, 2018 from http://www.kgs.ku.edu/Magellan/WaterLevels/index.html
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(fig.path='../figure/00.20_wizardFormatting/',
+knitr::opts_chunk$set(fig.path='../../figure/00.20_wizardFormatting/',
                       cache = FALSE)
 ```
 
@@ -27,9 +27,8 @@ library(tidyverse) # for ggplot2, tidyr, dplyr
 library(sf)
 library(lubridate)
 
-# get filepath to R project on local system
-library(here)
-mainDir <- here()
+# get filepath to repo on local system
+mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
 
 sessionInfo()
 ```

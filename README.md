@@ -13,3 +13,6 @@ Contents:
 * Processed, derived data used in paper analyses
 * Code to perform all paper analyses and generate figures in the paper
 * Code to produce the derived data from raw data sources. Raw data is publicly available and not provided here.
+
+## Google Earth Engine (GEE) scripts
+GEE was used to access previously published climate, crop type maps, and irrigation maps. Scripts used to summarize these assets for the study areas in the following and can be run in the [Google Earth Engine Code Editor](https://code.earthengine.google.com/). To learn more about GEE and/or sign up for a free account, go [here](https://developers.google.com/earth-engine/).

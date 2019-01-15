@@ -1,0 +1,156 @@
+---
+title: "Get Corn Prices"
+author: "Jill Deines"
+date: "March 9, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    keep_md: true
+---
+
+Goal: Get corn commodity prices for the study period, and adjust for inflation to 2017 dollars. Inflation adjustments are relative to 2017 and based on the CPI’s “Consumer Price Index for All Urban Consumers: All Items”
+
+
+```{r knitrOpts, echo=FALSE}
+library(knitr)
+opts_chunk$set(cache=FALSE, 
+               fig.path='../figure/00.10_cornPrices/')
+```
+
+**R Packages Needed**
+
+```{r packages, message=FALSE, echo=TRUE}
+library(tidyverse) # for ggplot2, tidyr, dplyr
+library(lubridate)
+
+library(Hmisc)
+
+# get filepath to R project on local system
+library(here)
+mainDir <- here()
+
+sessionInfo()
+```
+
+# User Vars
+
+```{r userVars}
+# data directory
+priceDir <- paste0(mainDir, '/data/tabular/commodityPrices')
+
+# filename for inflation adjustment table (made in inflationTable chunk)
+cpiFile <- 'cpi_priceAdjustments.csv'
+
+# corn prices downloaded from NASS
+nassRawFile <- 'NASS_corn_prices_1996-2017_raw.csv'
+periodType <- 'YEAR'
+
+# output file name
+cornFileOut <- 'NASS_corn_prices_1996-2017_inflationAdjusted_2017dollars.csv'
+```
+
+
+# Price data
+Price data was downloaded manually from the NASS quickstats tool (https://quickstats.nass.usda.gov/) for the following query: SURVEY - CROPS - FIELD CROPS - CORN/SOYBEANS/WHEAT/HAY/SORGHUM - PRICE RECEIVED - 
+
+* CORN, GRAIN - PRICE RECEIVED, MEASURED IN $ / BU
+
+- TOTAL - NATIONAL - US TOTAL - 1866:2017 - ANNUAL - YEAR
+
+Here, I load the data and clean it to have consistent pricing across crops and years
+
+```{r nassPrice_YearPeriod}
+# load nass
+price0 <- read.csv(paste0(priceDir, '/', nassRawFile)) %>% 
+  filter(Period == periodType)
+
+# load consumer price index adjustments
+cpi <- read.csv(paste0(priceDir, '/',cpiFile))
+
+# make a units columns (eh, extra doesnt)
+unitkey <- data.frame(Commodity = c('CORN'),
+                      unit = c('BU'))
+price0 <- merge(price0,unitkey)
+
+# remove silly columns
+price0 <- price0[,c('Commodity','Year','Value','unit')]
+
+# add the adjustment factor
+price <- merge(price0, cpi[,c('cpi_year','adj_factor_2017')], 
+               by.x = 'Year', by.y = 'cpi_year')
+
+# adjust prices (note: matched trials at https://data.bls.gov/cgi-bin/cpicalc.pl)
+price$price_2017 <- price$Value / price$adj_factor_2017
+
+# plot it - unadjusted
+ggplot(data = price, aes(x=Year, y = Value)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle('Nominal (unadjusted) Corn Prices') 
+
+
+# plot it
+ggplot(data = price, aes(x=Year, y = price_2017)) +
+  geom_line() +
+  theme_bw() +
+  ggtitle('Inflation-adjusted Corn Prices')
+
+
+# write out dataset
+write.csv(price, paste0(priceDir, '/',cornFileOut), 
+          row.names=F)
+```
+
+
+# compare price by commodity for review response
+A review requested evidence for colinearity among crop prices. Here I use a dataset produced similar to above for Deines et al. 2017, GRL, to extract correlations. 
+
+```{r nassPriceCorrelations}
+# load nass
+nassdir <- paste0(priceDir, '/price_5commodities_fromDeinesetal2017')
+price0 <- read.csv(paste0(nassdir, '/nass_prices_5crops_national_1996-2016.csv'))
+
+# load consumer price index adjustments
+cpi <- read.csv(paste0(nassdir, '/cpi_priceAdjustments.csv'))
+
+# make a units columns
+unitkey <- data.frame(Commodity = c('CORN','HAY','SORGHUM','SOYBEANS','WHEAT'),
+                      unit = c('BU','TON','CWT','BU','BU'))
+price0 <- merge(price0,unitkey)
+
+# remove silly columns
+price0 <- price0[,c('Commodity','Year','Value','unit')]
+
+# add the adjustment factor
+price <- merge(price0, cpi[,c('cpi_year','adj_factor_2015','adj_factor_2016')], 
+               by.x = 'Year', by.y = 'cpi_year')
+
+# adjust prices (note: matched trials at https://data.bls.gov/cgi-bin/cpicalc.pl)
+price$price_2015 <- price$Value / price$adj_factor_2015
+price$price_2016 <- price$Value / price$adj_factor_2016
+
+# plot it - unadjusted
+ggplot(data = price, aes(x=Year, y = Value)) +
+  geom_line() +
+  facet_wrap(~Commodity, scales='free_y') + theme_bw() +
+  ggtitle('Nomial (unadjusted) Crop Prices') 
+
+
+# plot it
+ggplot(data = price, aes(x=Year, y = price_2016)) +
+  geom_line() +
+  facet_wrap(~Commodity, scales='free_y') + theme_bw() +
+  ggtitle('Inflation-adjusted Crop Prices')
+
+# run correlations ----------------------
+priceWide <- price %>% 
+  select(c(Year, Commodity, price_2016)) %>%
+  filter(Commodity != 'HAY') %>%
+  tidyr::spread(., key = Commodity, value = price_2016)
+
+priceWide %>%
+  select(-Year) %>%
+  as.matrix() %>%
+  rcorr(type = 'spearman')
+```

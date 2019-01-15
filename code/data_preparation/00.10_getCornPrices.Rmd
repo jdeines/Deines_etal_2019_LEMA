@@ -15,7 +15,7 @@ Goal: Get corn commodity prices for the study period, and adjust for inflation t
 ```{r knitrOpts, echo=FALSE}
 library(knitr)
 opts_chunk$set(cache=FALSE, 
-               fig.path='../figure/00.10_cornPrices/')
+               fig.path='../../figure/00.10_cornPrices/')
 ```
 
 **R Packages Needed**
@@ -26,9 +26,8 @@ library(lubridate)
 
 library(Hmisc)
 
-# get filepath to R project on local system
-library(here)
-mainDir <- here()
+# filepath to repo on local system
+mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
 
 sessionInfo()
 ```

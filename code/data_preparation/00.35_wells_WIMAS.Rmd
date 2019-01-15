@@ -1,0 +1,179 @@
+---
+title: "WIMAS Water Use"
+author: "Jill Deines"
+date: "April 16, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    keep_md: true
+---
+
+Goal: Subset WIMAS to study area and do some formatting.
+
+update 10-18-2018: re-running with wimas data through 2017; and filtering by source. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.path='../../figure/00.35_wimas_2017/',
+                      cache = FALSE)
+library(knitr)
+```
+
+**R Packages Needed**
+
+```{r packages, warning=FALSE, message=FALSE}
+library(tidyverse) # for ggplot2, tidyr, dplyr
+library(sf)
+library(lubridate)
+library(tmap)
+
+sessionInfo()
+```
+
+# Load Data
+Formatted WIMAS data (Anthony + Jill pre-cleaning) and AOI shapefile produced in 03.01_wells_WIZARD. Formatted data produced by:
+
+* downloaded the full WIMAS database from http://hercules.kgs.ku.edu/geohydro/wimas/query_setup.cfm, annually
+* formatting with 00.30_wells_WIMAS_preprocessing.py (Anthony Kendall)
+* reshaping with 00.33_wells_WIMAS_preprocessing2.Rmd (Jill Deines)
+
+## Subset WIMAS Data
+Subset WIMAS for study area only to create a smaller file to be used in subsequent analyses. Run once.
+
+Also exports lists of wells in study regions
+
+```{r loadData, eval=FALSE}
+# directories
+projFolder <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
+gisDir <- paste0(projFolder, '/data/GIS/boundaries')
+wellDir <- paste0(projFolder, '/data/wellData/WIMAS_AnthonyCleaned_JillFormatted')
+proj <- 4267 
+startYear <- 1996
+endYear <- 2017
+
+# well data (orriginally in 4267, NAD27)
+wimas0 <- read_csv(paste0(wellDir, '/WIMAS_1990-2017_gwPts_ksHpa_withSource.csv')) %>%
+  st_as_sf(coords = c('LONGITUDE','LATITUDE'), crs = proj)
+#st_write(wimas0, paste0(wellDir, '/WIMAS_1990-2017_gwPts_ksHpa_withSource.shp'))
+wimas <- wimas0 %>% filter(source == 'GW')
+
+# boundaries of interest (orriginally in 4269, NAD83)
+AOIs <- read_sf(paste0(gisDir,'/Combined_Null9_S6_10kmBuff_indvlPolys.shp')) %>%
+  st_transform(proj)
+
+# extract points in both aois
+wellsIn <- st_join(wimas, AOIs) %>% filter(!is.na(masterid))
+
+# keep data from startYear on
+wellsInTime <- wellsIn %>%
+  filter(year >= startYear)
+
+# unique wells by region?
+wellsInTime %>% 
+  group_by(masterid) %>%
+  summarize(n = n_distinct(PDIV_ID))
+
+# export culled data as shapefile, csv, 
+write_sf(wellsInTime, paste0(wellDir,'/WIMAS_', startYear,'-', endYear, '_Lema1Buffer.shp'))
+write_sf(wellsInTime, paste0(wellDir,'/WIMAS_', startYear,'-', endYear, '_Lema1Buffer.csv'))
+
+# and list of well IDs
+
+# get unique pdiv_ids: full buffer
+wellIds <- data.frame(PDIV_ID = unique(wellsInTime$PDIV_ID))
+write.csv(wellIds, 
+          paste0(wellDir,'/wellList/wimas_wellIDs_buffer_',startYear,'_on_', endYear,'.csv'), 
+          row.names=FALSE)
+
+# get unique pdiv_ids: lema and null9
+wellsInTime.df <- wellsInTime
+st_geometry(wellsInTime.df) <- NULL
+regionWellIds <- wellsInTime.df %>%
+  filter(masterid %in% c('null_geo9','sheridan')) %>%
+  distinct(PDIV_ID)
+write.csv(regionWellIds, paste0(wellDir,'/wellList/wimas_wellIDs_lemaNull_',
+                              startYear, '_',endYear,'.csv'), 
+          row.names=FALSE)
+```
+
+## Format a bit more
+Make a file with just Sheridan and the Null9 region; will further tabulate in the 05.10_makeMasterDataFile.Rmd
+
+Also convert units, add crop key
+
+```{r formatData2}
+# directories
+gisDir <- '/Users/deinesji/Dropbox/1PhdJill/hpa/LEMA_Part1/data/GIS/boundaries'
+wellDir <- '/Users/deinesji/Dropbox/1PhdJill/hpa/LEMA_Part1/data/wellData/WIMAS_AnthonyCleaned_JillFormatted'
+proj <- 4267 
+startYear <- 1996
+endYear <- 2017
+
+# well data (orriginally in 4267, NAD27)
+wimas <- read_sf(paste0(wellDir, '/WIMAS_1996-2017_Lema1Buffer.shp'))
+
+# boundaries of interest (orriginally in 4269, NAD83)
+AOIs <- read_sf(paste0(gisDir,'/Combined_Null9_S6_10kmBuff_indvlPolys.shp')) %>%
+  st_transform(proj)
+
+# plot for funzies
+tm_shape(AOIs) + tm_polygons('masterid') + tm_shape(wimas) + tm_dots(size=.3)
+
+# remove buffer wells
+wimas2 <- wimas %>% filter(masterid != 'buffer')
+
+# convert units
+wimas3 <- wimas2 %>% 
+  mutate(area_m2 = acres * 4046.86,
+         depth_m = depth * 0.3048,
+         volume_m3 = volume * 1233.48) %>%
+  select(c(masterid, year, PDIV_ID, crop, volume_m3, area_m2, depth_m, system))
+
+# # # export this for future use
+# write_sf(wimas3, paste0(wellDir,'/WIMAS_', startYear,
+#                         '-',endYear,'_SheridanNull9_convertedUnits.shp'))
+# write_sf(wimas3, paste0(wellDir,'/WIMAS_', startYear,
+#                         '-',endYear,'_SheridanNull9_convertedUnits.csv'))
+
+```
+
+## Count wells by region
+
+```{r WellCount}
+yearCounts <- wimas3 %>%
+  as.data.frame() %>%
+  group_by(masterid, year) %>%
+  summarize(wells = n())
+
+kable(yearCounts)
+```
+
+### count wells with data
+more specifically, count wells that have data at least 1x in study period
+
+```{r wellCount2}
+# filter out wells without data during study period
+wellsWithData <- wimas3 %>%
+  ungroup() %>%
+  group_by(PDIV_ID) %>%
+  # count years of NA's
+  summarise(missingYears = sum(is.na(volume_m3))) 
+
+# check out missing year counts
+table(wellsWithData$missingYears)
+
+# get list of wells with no data in all 21 years from 1996-2017
+wellsWithData2 <- wellsWithData %>%  filter(missingYears < 21)
+
+
+
+yearCounts2 <- wimas3 %>%
+  as.data.frame() %>%
+  # remove wells without data during 1996-2017
+  filter(PDIV_ID %in% wellsWithData2$PDIV_ID) %>%
+  group_by(masterid, year) %>%
+  summarize(wells = n())
+
+kable(yearCounts2)
+```
+

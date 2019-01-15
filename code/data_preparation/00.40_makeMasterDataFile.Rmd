@@ -1,0 +1,332 @@
+---
+title: 'Data Sauron: Make Master Data File'
+author: "Jill Deines"
+date: "April 19, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    keep_md: true
+---
+
+Goal: Combine data sets into a master file for analysis
+
+Update 10/18/2018: re-done with WIMAS data including 2017
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.path='../../figure/00.40_makeMasterData_2017/',
+                      cache = FALSE)
+```
+
+**R Packages Needed**
+
+```{r packages, warning=FALSE, message=FALSE}
+library(tidyverse)
+
+# filepath to repo on local system
+mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
+
+sessionInfo()
+```
+
+# Get to It
+
+## CDL
+area by CDL type and irrigation status (aim-rrb) was exported using GEE script 00.04_gee_CDL_Summaries_final.js
+
+### Load and format
+
+2015 and 2015 have extra cdl class columns: 251,252,253. In all national
+metadata files for 2008 - 2016, these values are all NA. So, dropping columns.
+most come with a 0 column which is nonsense, so removing so all match.
+2013 has a class 62 that is NA for all others, for 'pasture/grass', but no
+classified cells for this class, so removing that as well.
+
+```{r processCDL}
+# directories
+dataDir <- paste0(mainDir, '/data/tabular')
+# cdl key 
+cdlkey <- read.csv(paste0(dataDir, '/CDL_key_2014.csv'))
+
+# CDL  annual files -  read in to a single dataframe
+cdlfiles <- list.files(paste0(dataDir,'/cdl_tables_lema'),
+            pattern="*Sheridan_Null9_area_irrigationStatus_tractsOnly_giFixed",
+                       full.names = TRUE)
+
+# read in to a single dataframe, removing junk columns and first dummy row
+dataAll <- as.data.frame(do.call(rbind, lapply(cdlfiles, function(x) {
+  csv1 <- read.csv(x)
+  csv1 <- csv1[, -which(names(csv1)%in% c('system.index','.geo','X0','X62',
+                                          'X251','X252','X253'))]
+  csv1 <- csv1[-1,]    # remove dummy row
+  csv2 <- csv1[csv1$masterid %in% c('sheridan','null_geo9'),]
+})))  
+
+# convert to long data format and remove NA's
+dataLong <- gather(dataAll, key = cdlCode, value = area_m2, X1:X92)
+dataLong <- dataLong[!is.na(dataLong$area_m2),]
+
+# add a crop type column using cdl key
+dataLong$cdlCode <- as.numeric(substr(dataLong$cdlCode, start = 2, 
+                                      stop = nchar(dataLong$cdlCode)))
+cdlkey$cdlClassName <- as.character(cdlkey$CLASS_NAME)
+dataLong2 <- merge(dataLong, cdlkey[,c('VALUE','cdlClassName')],
+                   by.x = 'cdlCode', by.y = 'VALUE')
+
+# reogranize
+cdlLong <- dataLong2 %>%
+  select(c(masterid, Year, status, cdlCode, cdlClassName, area_m2))
+```
+
+### Derive CDL totals
+Factors of interest:
+
+* annual active cropland
+* annual fallow
+* annual irrigated
+* annual rainfed
+* irrigated/nonirrigated corn
+* irrigted/nonirrigated sorghum
+* irrigated/nonirrigated soy
+* irrigated/nonirrigated wheat
+* irrigated/nonirrigated alfalfa
+
+```{r cdlAggregating}
+# included switchgrass (60) in non-ag, grass pasture (176)
+nonAg <- c(0,60,63,64,65, 81, 82, 83, 87, 88, 92, 111, 112, 121,122,123,124,131,
+           141, 142, 143, 152, 176, 190, 195)
+
+fallow <- 61
+doubleCrop <- c(225,226, 230:241, 254)
+
+top5 <- c(1,4,5,24,36) # corn, sorghum, soy, wheat, alfalfa
+
+# summarize categories (this feels inefficient but im uninspired)
+nonAgTotal <- cdlLong %>%
+  group_by(masterid, Year) %>%
+  filter(cdlCode %in% nonAg) %>%
+  summarize(nonAg_ha = sum(area_m2*1e-4))
+
+fallowtotal <- cdlLong %>%
+  group_by(masterid, Year) %>%
+  filter(cdlCode %in% fallow) %>%
+  summarize(fallow_ha = sum(area_m2*1e-4))
+
+doubleCropTotal <- cdlLong %>%
+  group_by(masterid, Year) %>%
+  filter(cdlCode %in% doubleCrop) %>%
+  summarize(doubleCropped_ha = sum(area_m2*1e-4))
+
+activeAg <- cdlLong %>%
+  group_by(masterid, Year) %>%
+  filter(!(cdlCode %in% c(nonAg,fallow))) %>%
+  summarize(cropActive_ha = sum(area_m2*1e-4))
+
+# get ag by irrigated status and start for format for combining
+agByStatus <- cdlLong %>%
+  filter(!(cdlCode %in% c(nonAg,fallow))) %>%
+  group_by(masterid, Year, status) %>%
+  summarize(area_ha = sum(area_m2*1e-4)) %>%
+  spread(., key = status, value = area_ha) %>%
+  rename(irrigated_ha = irrigated, rainfed_ha = rainfed)
+
+# get top 5 crops by irrigated status and start for format for combining
+top5IrrStatus <- cdlLong %>%
+  filter(cdlCode %in% top5) %>%
+  group_by(masterid, Year, status, cdlClassName) %>%
+  summarize(cropArea_ha = sum(area_m2*1e-4)) %>%
+  mutate(crop_status = 
+           gsub(" ", "", paste(cdlClassName,status,'ha',sep = '_'))) %>%
+  ungroup() %>%
+  select(-c(status, cdlClassName)) %>%
+  spread(., key = crop_status, value = cropArea_ha)
+
+# add 'em together: wide format
+cdlVars <- cdlLong %>%
+  group_by(masterid, Year) %>%
+  summarize(totalArea_ha = sum(area_m2*1e-4)) %>%
+  left_join(activeAg, by = c('masterid','Year')) %>%
+  left_join(fallowtotal, by = c('masterid','Year')) %>%
+  left_join(doubleCropTotal, by = c('masterid','Year')) %>%
+  left_join(nonAgTotal, by = c('masterid','Year')) %>%
+  left_join(agByStatus, by = c('masterid','Year')) %>%
+  left_join(top5IrrStatus, by = c('masterid','Year'))
+
+# question: how much of irrigated area is represented by top 4 crops?
+means <- cdlVars %>%
+  ungroup() %>%
+  filter(Year >= 2008) %>%
+  group_by(masterid) %>%
+  summarize(meanActiveCrop = mean(cropActive_ha),
+            meanIrrCrop = mean(irrigated_ha),
+            meanCornirr = mean(Corn_irrigated_ha),
+            meanSorgIrr = mean(Sorghum_irrigated_ha),
+            meanWheatIrr = mean(WinterWheat_irrigated_ha),
+            meanSoyIrr = mean(Soybeans_irrigated_ha),
+            meanAlfIrr = mean(Alfalfa_irrigated_ha))
+
+means %>%
+  rowwise() %>%
+  mutate(main4Area = sum(meanCornirr, meanSorgIrr, meanWheatIrr, meanSoyIrr),
+         percentOfIrr = main4Area/meanIrrCrop*100)
+
+# alfalfa percent of irrigated area
+means$meanAlfIrr/means$meanIrrCrop
+```
+
+## Other Data
+Add water levels, ancillary variables like precip and aridity, commodity prices(?) aim_rrb
+
+### AIM derived climate and area
+Summaries of irrigated area from AIM-RRB and associated ancillary variables extracted in GEE script 00.07_gee_Get_AIMRRB_andAncillary_Final.js; the ancillary variables sampled  here are from the script 00.06_gee_makeAncillaryData, which was used to generate climate summaries for the full High Plains Aquifer + additional regions for a related project. 
+
+
+```{r AIMcovars, message=FALSE}
+#   annual files -  read in to a single dataframe
+aimFiles <- list.files(paste0(dataDir,'/aimrrb_plusAncillary_lema'),
+                       pattern="*TractMaskedGiFixed")
+
+# read in to a single dataframe, removing junk columns and first dummy row
+aimAll <- as.data.frame(do.call(rbind, lapply(aimFiles, function(x) {
+  csv1 <- read_csv(paste0(dataDir,'/aimrrb_plusAncillary_lema/',x))
+  # remove junk and "non irrigated" column (since cdlVar has non-irr cropland)
+  csv2 <- csv1[, -which(names(csv1)%in% c('system:index','.geo', 'groups', '0'))]
+  # don't include data for buffer zone
+  csv3 <- csv2[csv2$masterid %in% c('sheridan','null_geo9'),]
+  # files prior to 1999 (aim-rrb start year) are missing a `1` irrigated column
+  if(!(1 %in% names(csv3))) {
+    csv3$`1` <- NA
+  }
+  # rename irrigated
+  csv3$aimIrr_ha <- csv3$`1` *1e-4
+  # add a year column based on file name
+  csv3$Year <- as.numeric(substr(x, start=1,stop=4))
+  # arrange output
+  csv4 <- csv3 %>%
+    select(c(masterid, Year, aimIrr_ha, pr_calendar, pr_ann, pr_grow, aridity))
+})))  
+
+# combine with cdlVars
+oneData00 <- aimAll %>%
+  left_join(cdlVars, by = c('masterid','Year'))
+```
+
+### Commodity Prices
+2017 inflation Adjusted corn prices (as a proxy for all commodity prices, due to high correlation) derived from NASS stats in 00.10_getCornPrices.Rmd
+
+```{r prices}
+# load and format
+prices <- read_csv(paste0(dataDir,'/commodityPrices/NASS_corn_prices_1996-2017_inflationAdjusted_2017dollars.csv')) %>%
+  mutate(cornPriceAdj2017 = Value) %>%
+  select(c(Year,cornPriceAdj2017))
+
+# combine (should fill in rows for sheridan and null)
+oneData0 <- oneData00 %>%
+  left_join(prices, by = 'Year')
+```
+
+
+### Water Levels
+Processed, kriged, and summarized in scripts 00.2X_wells_wizardXXXXX.Rmd.
+
+```{r addMoreData}
+# load water levels
+waterLevels <- read_csv(paste0(dataDir,'/waterLevels_1996-2017_wizardKriged_lemaNull9_jimRemoved.csv'))
+
+# add to massive data frame
+oneData000 <- waterLevels %>%
+  left_join(oneData0, by = c('masterid','Year')) %>%
+  rename(pr_calendar_mm = pr_calendar,
+         pr_JanAug_mm = pr_ann,
+         pr_grow_mm = pr_grow)
+
+
+```
+
+### WIMAS and Pumping
+Processed and cleaned in scripts 00.3X_wells_WIMAS_XXXX.Rmd
+
+Get summed volume and area by region. Note raw data is not provided but can be obtained at the link provided in 00.30_wells_WIMAS_preprocessing.Rmd
+
+```{r wimas}
+wellDir <- paste0(mainDir, '/data/wellData/WIMAS_AnthonyCleaned_JillFormatted')
+
+# load and sum
+wimas <- read_csv(paste0(wellDir,
+                         '/WIMAS_1996-2017_SheridanNull9_convertedUnits.csv')) %>%
+  rename(Year = year) %>%
+  group_by(masterid, Year) %>%
+  summarize(wimasVol_km3 = sum(volume_m3 * 1e-6, na.rm = TRUE),
+            wimasIrrArea_ha = sum(area_m2 * 1e-4, na.rm=TRUE))
+
+# combine
+oneData <-  wimas %>%
+  right_join(oneData000, by = c('masterid','Year')) %>%
+  arrange(Year, masterid)
+
+oneData
+
+names(oneData)
+```
+
+Bonus: analysis changes in irrigation tech for reviewer
+
+```{r irrTech}
+wellDir <- paste0(mainDir, '/data/wellData/WIMAS_AnthonyCleaned_JillFormatted')
+
+systemKey <- data.frame(system=1:9,
+                        systemCode = c('flood','trickledrip','center pivot','center pivot lepa',
+                                       'sprinkler other than cp','center pivot and flood',
+                                       'subsurface drip in combo with other','other',
+                                       'center pivot with mobile drip'))
+
+# load 
+wimas2 <- read_csv(paste0(wellDir,
+                         '/WIMAS_1996-2017_SheridanNull9_convertedUnits.csv')) %>%
+  left_join(systemKey) %>%
+  #filter(year >= 2008) %>%
+  filter(system != -99)
+
+# get area by system
+systemArea <- wimas2 %>%
+  group_by(masterid, year, system) %>%
+  summarize(area_km2 = sum(area_m2)*1e-6) %>%
+  filter(area_km2 >0) 
+
+# plot
+ggplot(systemArea,
+       aes(x = year, y = area_km2, color = as.factor(system), group = as.factor(system))) +
+  geom_line() +
+  facet_wrap(~masterid) +
+  theme_bw()
+
+# compare percent increase in lepa
+# add a column for presence of LEMA program
+lemaKey <- data.frame(year = 1996:2017,
+                      isLema = c(rep('before',17),rep('post',5)))
+lepa <- systemArea %>%
+  left_join(lemaKey) %>%
+  filter(system ==4 & year >= 2008)
+
+ggplot(lepa,
+       aes(x = year, y = area_km2)) +
+  geom_line() +
+  facet_wrap(~masterid) +
+  theme_bw()
+
+nullLepa <- lm(area_km2~year, data = lepa[lepa$masterid == 'null_geo9',])
+summary(nullLepa)
+
+sd6Lepa <- lm(area_km2~year, data = lepa[lepa$masterid == 'sheridan',])
+summary(sd6Lepa)
+
+
+```
+
+## Export
+This df will be used for subsequent analyses
+
+```{r export}
+write_csv(oneData, paste0(dataDir, '/masterTidyData_Wide_aimTractMaskedGiFixed_jimRemoved_with2017_20181018.csv'))
+```
+

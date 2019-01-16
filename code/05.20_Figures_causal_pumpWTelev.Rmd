@@ -21,7 +21,6 @@ knitr::opts_chunk$set(fig.path='../figure/05.20_fig2_causal_2017/',
 ```{r packages, warning=FALSE, message=FALSE}
 library(tidyverse)
 library(lemon)
-library(salustools)
 
 # filepath to repo on local system
 mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'

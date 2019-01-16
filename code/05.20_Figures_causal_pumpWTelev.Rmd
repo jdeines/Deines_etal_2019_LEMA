@@ -1,0 +1,95 @@
+---
+title: "causal impact figures"
+author: "Jill Deines"
+date: "April 28, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    keep_md: true
+---
+
+Goal: Make plots for figure of pumping and water trends following LEMA: Figure 2. Figure composition finalized in Adobe Illustrator.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.path='../figure/05.20_fig2_causal_2017/',
+                      cache = FALSE)
+```
+
+**R Packages Needed**
+
+```{r packages, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(lemon)
+library(salustools)
+
+# filepath to repo on local system
+mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
+
+sessionInfo()
+```
+
+# Load Data
+master data file created in 00.40_makeMasterDataFile.Rmd
+
+```{r load}
+dataDir <- paste0(mainDir, '/data/tabular')
+summaryName <- 'causalImpact_summaries_05-20_20181018.csv'
+
+# load
+summary.wide <- read_csv(paste0(dataDir, '/', summaryName)) 
+
+# add a pseudo region name so that LEMA is plotted on top
+namekey <- data.frame(masterid = c('LEMA','Control'),
+                      region = c('aLema','Control'))
+summary.wide2 <- summary.wide %>% 
+  left_join(namekey, by = 'masterid') %>%
+  mutate(facetKey = paste0(variable,region))
+
+# split by variable
+pumpingWide <- summary.wide2 %>% filter(variable == 'pumping')
+wtWide <- summary.wide2 %>% filter(variable == 'wtElev')
+```
+
+# pumping plots
+
+## 2x2
+
+```{r pumping_2row_points, fig.width = 6.5, fig.height = 4, dev = c('pdf','png')}
+# dummy df to fix scales between rows
+df2 = data.frame(year = 2000, 
+                 facetKey = rep(c('pumpingaLema','pumpingControl','wtElevaLema',
+                              'wtElevControl'),2),
+                 value = c(50,50,4,4,12,13,-13,-13))
+
+ggplot(summary.wide2, aes(x = year, y = point.pred)) +
+  # model predictions
+  geom_ribbon(aes(ymin = point.pred.lower, ymax = point.pred.upper),
+              fill = 'gray80',alpha = .7) +
+  geom_line(color = 'gray50') +
+  # observed values
+  #geom_line(aes(y = response, color = region), lwd = 1.05) +
+  geom_point(aes(y = response, color = region)) +
+  # lema line
+  geom_vline(xintercept = 2012.5, color = 'gray60', linetype = 'longdash') +
+  # formatting
+  geom_point(data = df2, aes(x = year, y = value), colour = "white", alpha = 0) +
+  facet_wrap(~facetKey, scale = 'free_y', nrow = 2) +
+  scale_color_manual(values=c("#35978f", "#bf812d"),
+                     labels = c('LEMA','Control')) +
+  scale_fill_manual(values=c("#35978f", "#bf812d")) +
+  xlab('') + 
+  ylab(bquote('Groundwater Level (m)         Total Pumping (' ~km^3~')')) +
+  theme_bw() + theme(legend.title=element_blank(),
+                     legend.position=c(.1,.1),
+                     strip.background=element_blank(), # comment to add labels
+                     strip.text.x = element_blank(),   # comment to add labels
+                     axis.text=element_text(size=10),
+                     legend.text=element_text(size=10),
+                     axis.title=element_text(size=11),
+                     panel.grid.major = element_blank(),
+                     panel.grid.minor = element_blank())
+  
+```
+
+

@@ -19,6 +19,8 @@ All data needed to reproduce the analyses and figures from Deines et al. 2017 ca
 * `data/tabular/causalImpact_summaries_05-20_20181018.csv`: formatted output from pumping/water table causalImpact analyses (code/00.10_analyses_PumpingAndWaterLevels.Rmd)
 * `data/GIS/boundaries`: GIS polygon files for the study regions (Sheridan 6 boundary, our control, and the buffered study region)
 
+Additional intermediate data files are included as well. See processing scripts for details.
+
 ### Scripts
 
 * Code to produce the derived data from raw data sources (`code/data_preparation` folder). 

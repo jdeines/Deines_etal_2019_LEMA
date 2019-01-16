@@ -1,4 +1,4 @@
-# Derived data and analysis code, Deines et al. 2019, ERL
+# Deines et al. 2019, ERL, Derived data and analysis code
 
 14 January 2019  
 Code by: Jillian Deines  

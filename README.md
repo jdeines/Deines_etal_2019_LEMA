@@ -31,6 +31,7 @@ Script filenames are numbered in sequential order of use. The majority of proces
 #### Google Earth Engine (GEE) scripts
 GEE was used to access previously published climate, crop type maps, and irrigation maps. Scripts used to summarize these assets for the study areas include the following and can be run in the [Google Earth Engine Code Editor](https://code.earthengine.google.com/). To learn more about GEE and/or sign up for a free account, go [here](https://developers.google.com/earth-engine/).
 
-* `00.00_gee_defineStudyArea_Final.js`: calculates attributes used to delineate the control region
+* `00.00_gee_makeAncillaryData.js`: aggregates gridded climate data to specified time steps
+* `00.02_gee_defineStudyArea_Final.js`: calculates attributes used to delineate the control region
 * `00.04_gee_CDL_Summaries_final.js`: summarizes crop-specific areas using USDA Cropland Data Layers for the regions of interest
 * `00.70_gee_Get_AIMRRB_andAncillary_Final.js`: summarizes irrigated areas as mapped in [Deines et al. 2017](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1002/2017GL074071) using Landsat satellite data. Annual irrigation maps are also available for download at [Hydroshare](https://www.hydroshare.org/resource/55331a41d5f34c97baf90beb910af070/).

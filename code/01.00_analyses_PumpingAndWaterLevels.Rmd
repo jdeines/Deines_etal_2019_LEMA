@@ -1,0 +1,274 @@
+---
+title: "Pumping and Water Table Analyses"
+author: "Jill Deines"
+date: "April 20, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    keep_md: true
+---
+
+Goal: Analyse the impact of LEMA implementation on well pumping (aggregate) and water table levels.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.path='../figure/01.00_pumpingWtElev_2017/',
+                      cache = FALSE)
+```
+
+**R Packages Needed**
+
+```{r packages, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(CausalImpact)
+library(knitr)
+
+# filepath to repo on local system
+mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
+```
+
+# Load Data
+master data file created in the aptly named 00.40_makeMasterDataFile.Rmd
+
+```{r load}
+dataDir <- paste0(mainDir, '/data/tabular')
+masterName <- 'masterTidyData_Wide_20181018.csv'
+
+# load
+master0 <- read_csv(paste0(dataDir, '/', masterName)) 
+
+# add a column for presence of LEMA program
+lemaKey <- data.frame(Year = 1996:2017,
+                      isLema = c(rep('before',17),rep('post',5)))
+master <- master0 %>% left_join(lemaKey, by = 'Year')
+
+# make a long version of relevant variables
+waterUseLong <- master %>%
+  dplyr::select(c(masterid, Year, wimasVol_km3, wimasIrrArea_ha, wtElev_m,
+                  wtRelative2012_m,wtRelative0_m, pr_calendar_mm, irrigated_ha,
+                  aimIrr_ha, annualChange_m)) %>%
+  tidyr::gather(., key = variable, value = value, wimasVol_km3:annualChange_m)
+
+# separate regions
+sheridan <- master %>% filter(masterid == 'sheridan')
+null9 <- master %>% filter(masterid == 'null_geo9')
+
+
+set.seed(43)
+```
+
+# Functions
+
+## causalImpact helper fun
+simplify individual runs slightly. note the intervention time is static and specific to LEMA
+
+```{r fun_helper}
+
+runCausalImpact <- function(startYear,endYear, dataframe){
+  # make a zoo object for row index thingy
+  year <- c(startYear:endYear)
+  inputZoo <- zoo(as.matrix(dataframe),  year)
+
+  # run model (intervention year is static)
+  before <- c(startYear,2012)
+  after <- c(2013,endYear)
+  causalModel <- CausalImpact(inputZoo, before, after)
+  return(causalModel)
+}
+
+```
+
+# Pumping Volumes
+Compare aggregate pumping per region by pre-/post-LEMA periods
+
+## Numbers
+
+```{r pumpingChangeTable}
+master2002 <- master %>% filter(Year >= 2002)
+
+cropMasterTable <- master2002 %>%
+  dplyr::select(c(masterid, isLema, wimasVol_km3, wtElev_m, wtRelative0_m,
+                   pr_JanAug_mm, pr_grow_mm, pr_calendar_mm, cornPriceAdj2017,
+                   wimasIrrArea_ha, aimIrr_ha, cropActive_ha, aridity,
+                  annualChange_m)) %>%
+  group_by(masterid, isLema) %>%
+  summarise_all(funs(mean), na.rm=TRUE) %>%
+  tidyr::gather(., key = variable, value = hectares, 
+                wimasVol_km3:annualChange_m) %>%
+  tidyr::spread(., key = isLema, value = hectares) %>%
+  ungroup() %>%
+  group_by(masterid, variable) %>%
+  mutate(percDiff = (post - before)/before*100,
+         diff = post - before) %>%
+  arrange(variable, masterid)
+
+options(scipen=999)    
+kable(cropMasterTable, digits = 2)
+```
+
+
+## Causal Impact Analysis
+Using the `CausalImpact` package. the first column of the input dataframe needs to be the response variable (here, pumping), and all subsequent columns are taken as covariates
+
+Covariates can't be affected by the intervention
+
+### sheridan pumping
+covariates: year, precipitation, aridity, corn prices. 
+
+```{r pumping_sheridan}
+# extract df for causalimpact
+sheridanPumping <- sheridan %>% 
+  filter(Year <= 2017) %>%
+  dplyr::select(c(wimasVol_km3, Year, pr_calendar_mm, pr_grow_mm, pr_JanAug_mm,
+                   aridity, cornPriceAdj2017)) 
+
+# format data input and run model
+sheridanModel <- runCausalImpact(1996, 2017, sheridanPumping)
+
+# see results
+plot(sheridanModel) 
+summary(sheridanModel)
+summary(sheridanModel, 'report')
+
+# what variables were important?
+plot(sheridanModel$model$bsts.model, "coefficients")
+```
+
+### Null/Control Region pumping
+does the intervention have any effect on the null? Using exact same model inputs.
+
+```{r pumping_null}
+# extract df for causalimpact
+nullPumping <- null9 %>% 
+  filter(Year <= 2017) %>%
+  dplyr::select(c(wimasVol_km3, Year, pr_calendar_mm, pr_grow_mm, pr_JanAug_mm,
+                  aridity, cornPriceAdj2017)) 
+
+# format data input and run model
+nullModel <- runCausalImpact(1996, 2017, nullPumping)
+
+# see results
+plot(nullModel)  
+summary(nullModel)
+summary(nullModel, 'report')
+
+# what variables were important?
+plot(nullModel$model$bsts.model, "coefficients")
+```
+
+
+# Water Levels
+
+## Causal Impact
+
+### Sheridan Water Table
+
+```{r wt0_sheridan}
+# extract df for causalimpact
+sheridanwt <- sheridan %>% 
+   dplyr::select(c(wtRelative0_m, Year, pr_calendar_mm, pr_grow_mm,
+                  pr_JanAug_mm, 
+                  aridity, cornPriceAdj2017)) 
+
+# format data input and run model
+sheridanModel_wt <- runCausalImpact(1996, 2017, sheridanwt)
+
+plot(sheridanModel_wt) 
+summary(sheridanModel_wt)
+summary(sheridanModel_wt, 'report')
+
+plot(sheridanModel_wt$model$bsts.model, "coefficients")
+```
+
+#### Summary of rate of change
+Reviewer Question: did the rate of decline change?
+
+```{r sheridanMeanChange}
+# get annual changes
+sheridanwt_lag <- sheridanwt %>%
+  mutate(wtlag = wtRelative0_m - lag(wtRelative0_m))
+
+# summarize for pre-lema ref period
+sheridanwt_lag %>%
+  filter(Year <= 2012 & Year > 2002) %>%
+  summarize(mean(wtlag))
+
+# don't include 2013 since that is the change from 2012 = 2012 pre-lema pumping
+sheridanwt_lag %>%
+  filter(Year <= 2017 & Year > 2013) %>%
+  summarize(mean(wtlag))
+```
+
+
+### Null Water Table
+
+```{r wt0_null}
+# extract df for causalimpact
+nullwt <- null9 %>% 
+  dplyr::select(c(wtRelative0_m,Year,  pr_calendar_mm, pr_grow_mm,
+                  pr_JanAug_mm, 
+                  aridity, cornPriceAdj2017))
+
+# format data input and run model
+nullModel_wt <- runCausalImpact(1996, 2017, nullwt)
+
+
+plot(nullModel_wt) 
+summary(nullModel_wt)
+summary(nullModel_wt, 'report')
+```
+
+#### Summary of rate of change
+Reviewer Question: did the rate of decline change?
+
+```{r nullMeanChange}
+# get annual changes
+nullwt_lag <- nullwt %>%
+  mutate(wtlag = wtRelative0_m - lag(wtRelative0_m))
+
+# summarize for pre-lema ref period
+nullwt_lag %>%
+  filter(Year <= 2012 & Year > 2002) %>%
+  summarize(mean(wtlag))
+
+# don't include 2013 since that ist he change from 2012 = 2012 pre-lema pumping
+nullwt_lag %>%
+  filter(Year <= 2017 & Year > 2013) %>%
+  summarize(mean(wtlag))
+```
+
+# Combine Model Output
+
+## Extract tables
+
+### function to pull data
+
+```{r fun_modelextract}
+extractModelNums <- function(causalModel1, variable1, masterid1, startYear){
+  data1 <- as.data.frame(causalModel1$series[,c('response','point.pred',
+                                 'point.pred.lower', 'point.pred.upper')])
+  data1$variable <- variable1
+  data1$masterid <- masterid1
+  data1$year <- startYear:(startYear+nrow(data1)-1)
+  return(data1)
+}
+```
+
+### extract and merge
+
+```{r pumping}
+# get model output
+sherPump <- extractModelNums(sheridanModel, 'pumping','LEMA', 1996)
+nullPump <- extractModelNums(nullModel, 'pumping','Control', 1996)
+sherWT <- extractModelNums(sheridanModel_wt, 'wtElev','LEMA', 1996)
+nullWT <- extractModelNums(nullModel_wt, 'wtElev','Control', 1996)
+
+# combine and export
+allModels <- rbind(sherPump,nullPump, sherWT, nullWT)
+
+write_csv(allModels, paste0(dataDir,'/causalImpact_summaries_05-20_20181018.csv'))
+```
+
+
+

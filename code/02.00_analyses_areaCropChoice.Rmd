@@ -1,0 +1,184 @@
+---
+title: "Area and Crop Changes"
+author: "Jill Deines"
+date: "April 23, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    keep_md: true
+---
+
+Goal: Summarize changes in irrigated area and crop choices before/after LEMA
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.path='../figure/02.00_areaCropChoices_2017/',
+                      cache = FALSE)
+```
+
+**R Packages Needed**
+
+```{r packages, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(broom)
+library(lubridate)
+library(knitr)
+
+# filepath to repo on local system
+mainDir <- '/Users/deinesji/Documents/code_git/1phd/DeinesEtAl2019_ERL_lema1'
+```
+
+# Load Data
+master data file created in the aptly named 00.40_makeMasterDataFile.Rmd
+
+```{r load}
+dataDir <- paste0(mainDir, '/data/tabular')
+masterName <- 'masterTidyData_Wide_20181018.csv'
+
+# load
+master0 <- read_csv(paste0(dataDir, '/', masterName)) 
+
+# add a column for presence of LEMA program
+lemaKey <- data.frame(Year = 1996:2017,
+                      isLema = c(rep('before',17),rep('post',5)))
+master <- master0 %>%
+  left_join(lemaKey, by = 'Year')
+
+
+# subset for 5 year before/after
+master5 <- master %>% filter(Year > 2007)
+sheridan5 <- master5 %>% filter(masterid == 'sheridan') %>% arrange(Year)
+control5 <- master5 %>% filter(masterid == 'null_geo9') %>% arrange(Year)
+```
+
+# Crops
+
+## Master Table
+Display before, after, and % change for pre and post means
+
+```{r cropMasterTable}
+cropMasterTable <- master5 %>%
+  dplyr::select(-c(wimasVol_km3, wtElev_m, wtRelative0_m, wtRelative2012_m,
+                   pr_JanAug_mm, pr_grow_mm,
+                   totalArea_ha, nonAg_ha, Year, Alfalfa_irrigated_ha,
+                   Alfalfa_rainfed_ha, annualChange_m)) %>%
+  group_by(masterid, isLema) %>%
+  summarise_all(funs(mean), na.rm=TRUE) %>%
+  tidyr::gather(., key = variable, value = hectares, 
+                wimasIrrArea_ha:cornPriceAdj2017) %>%
+  tidyr::spread(., key = isLema, value = hectares) %>%
+  ungroup() %>%
+  group_by(masterid, variable) %>%
+  mutate(percDiff = (post - before)/before*100,
+         diff = post - before) %>%
+  arrange(variable, masterid)
+
+options(scipen=999)    
+kable(cropMasterTable, digits = 2)
+```
+
+Calculate corn's percentage of irrigated area pre/post LEMA in Sheridan
+
+```{r cornyChanges}
+cropMasterTable %>%
+  ungroup() %>%
+  filter(masterid == 'sheridan' & variable %in% 
+           c('aimIrr_ha', 'Corn_irrigated_ha', 'wimasIrrArea_ha'))
+
+# irr area mean pre-lema
+irrPre <- mean(8985,10058)
+irrPost <- mean(8825,9589)
+
+# corn proportion preLema
+6892/irrPre
+
+# corn proportion postLema
+6005/irrPost
+```
+
+
+# Irrigated Area
+
+Examine changes in irrigated area. Compare estimates from WIMAS and AIM-RRB.
+
+## 5 years before (2008-2017)
+
+Summarize WIMAS
+
+```{r irrWimas}
+# summary
+master5 %>%
+  group_by(masterid, isLema)  %>%
+  summarize(Mean = mean(wimasIrrArea_ha, na.rm=TRUE),
+            q25 = quantile(wimasIrrArea_ha, .25, na.rm=TRUE),
+            q50 = quantile(wimasIrrArea_ha, .5, na.rm=TRUE),
+            q75 = quantile(wimasIrrArea_ha, .75, na.rm=TRUE),
+            min = min(wimasIrrArea_ha, na.rm=TRUE),
+            max = max(wimasIrrArea_ha, na.rm=TRUE))
+
+# rough stats
+wimIrr <- master5 %>%
+  filter(Year <= 2017) %>%
+  group_by(masterid)  %>%
+  do(tidy(t.test(wimasIrrArea_ha~isLema, data =.)))
+wimIrr
+```
+
+Summarise AIM
+
+```{r irrAim}
+master5 %>%
+   group_by(masterid, isLema)  %>%
+  summarize(Mean = mean(aimIrr_ha, na.rm=TRUE),
+            q25 = quantile(aimIrr_ha, .25, na.rm=TRUE),
+            q50 = quantile(aimIrr_ha, .5, na.rm=TRUE),
+            q75 = quantile(aimIrr_ha, .75, na.rm=TRUE),
+            min = min(aimIrr_ha, na.rm=TRUE),
+            max = max(aimIrr_ha, na.rm=TRUE))
+
+# rough stats
+wimIrr <- master %>%
+  filter(Year %in% 2008:2017) %>%
+  group_by(masterid)  %>%
+  do(tidy(t.test(aimIrr_ha~isLema, data =.)))
+wimIrr
+```
+
+
+plot them
+
+```{r irrArea_2008}
+
+# get mean irrigated area, before and after
+meanIrrArea <- master %>%
+  filter(Year > 2007) %>%
+  dplyr::select(masterid, isLema, wimasIrrArea_ha, aimIrr_ha) %>%
+  gather(., key = dataset, value = value, wimasIrrArea_ha:aimIrr_ha)
+
+# plot wimas
+ggplot(meanIrrArea %>% filter(dataset == 'wimasIrrArea_ha'), 
+       aes(x = isLema, y = value)) +
+  geom_boxplot() + 
+  facet_wrap(~masterid) +
+  theme_bw() + 
+  ggtitle('WIMAS Change in Area, 2008-2012 vs 2013-2016')
+
+# plot aim
+ggplot(meanIrrArea %>% filter(dataset == 'aimIrr_ha'), 
+       aes(x = isLema, y = value)) +
+  geom_boxplot() + 
+  facet_wrap(~masterid) +
+  theme_bw() + 
+  ggtitle('AIM-RRB Change in Area, 2008-2012 vs 2013-2017')
+
+# plot both
+ggplot(meanIrrArea, 
+       aes(x = isLema, y = value, group = interaction(dataset, isLema), color = dataset)) +
+  geom_boxplot() + 
+  facet_wrap(~masterid) +
+  theme_bw() + 
+  ggtitle('Change in Area by Dataset, 2008-2012 vs 2013-2017')
+```
+
+

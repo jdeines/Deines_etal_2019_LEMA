@@ -13,6 +13,8 @@ Deines, JM, AD Kendall, JJ Butler, Jr., & DW Hyndman. 2019. Quantifying irrigati
 ### Data
 All data needed to reproduce the analyses and figures from Deines et al. 2017 can be found in the `data` folder. Data is provided as derived, processed data aggregated to regional levels (Sheridan 6 LEMA and the Control Region). Raw data providing point location information on water levels or well pumping are not included in this repository to leave data access under the purview of the data sources (such as the Kansas Geological Survey), out of abundance of caution for data privacy; at the time of writing, all data sources are publicly available and sources are provided in the manuscript and data preparation scripts.
 
+Note: the control region is also referred to as "Null 9" at various places, as it was the 9th candidate boundary and represents the null hypothesis.
+
 **Data included here**
 
 * `data/tabular/masterTidyData_Wide_20181018.csv`: regional summaries of data variables, including pumping volumes, annual water tables, crop areas, etc. Produced via code in code/data_preparation folder

@@ -1,5 +1,7 @@
 # Deines et al. 2019, ERL, Derived data and analysis code
 
+[![DOI](https://zenodo.org/badge/165748588.svg)](https://zenodo.org/badge/latestdoi/165748588)
+
 14 January 2019  
 Code by: Jillian Deines  
 Contact: jillian.deines@gmail.com  
